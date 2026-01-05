@@ -1,7 +1,10 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+
+// Generate UUID using Node.js built-in crypto
+const generateId = () => crypto.randomUUID();
 
 // Ensure upload directories exist
 const createUploadDirs = () => {
@@ -40,7 +43,7 @@ const storage = multer.diskStorage({
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = uuidv4();
+    const uniqueSuffix = generateId();
     const ext = path.extname(file.originalname);
     cb(null, `${uniqueSuffix}${ext}`);
   }
@@ -111,7 +114,7 @@ const profilePhotoStorage = multer.diskStorage({
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = uuidv4();
+    const uniqueSuffix = generateId();
     const ext = path.extname(file.originalname);
     cb(null, `profile-${req.user.id}-${uniqueSuffix}${ext}`);
   }
