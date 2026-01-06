@@ -1,4 +1,4 @@
-require('dotenv').config();
+const config = require('./config/' + (process.env.NODE_ENV || 'development'));
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -18,12 +18,13 @@ const config = require('./config')[env === 'production' ? 'production' : 'develo
 const routes = require('./routes');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { sequelize, testConnection } = require('./config/database');
+const { syncDatabase } = require('./models');
 
 // Initialiser l'application Express
 const app = express();
 
 // Configuration du proxy (nécessaire pour Railway et derrière un reverse proxy)
-app.set('trust proxy', config.server.trustProxy ? 1 : 0);
+app.set('trust proxy', config.server?.trustProxy ? 1 : 0);
 
 // Configuration des logs d'accès
 const logDirectory = path.join(__dirname, '..', 'logs');
@@ -129,7 +130,7 @@ if (process.env.NODE_ENV === 'production') {
   
   // Serve static files from the frontend build
   app.use(express.static(frontendPath));
-  
+
   // Handle client-side routing - serve index.html for all non-API routes
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/uploads') || req.path === '/' || req.path === '/health') {

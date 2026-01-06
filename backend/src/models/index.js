@@ -1,4 +1,5 @@
-const sequelize = require('../config/database');
+require('dotenv').config();
+const { sequelize } = require('../config/database');
 const User = require('./User');
 const Site = require('./Site');
 const Task = require('./Task');

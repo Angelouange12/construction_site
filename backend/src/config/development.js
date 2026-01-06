@@ -1,3 +1,5 @@
+const path = require('path');
+
 module.exports = {
   // Configuration du serveur
   server: {

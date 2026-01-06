@@ -89,7 +89,5 @@ const testConnection = async () => {
 // Exporter l'instance Sequelize et la fonction de test
 module.exports = {
   sequelize,
-  testConnection,
-  // Exporter les modèles pour faciliter l'importation
-  ...require('./models')
+  testConnection
 };
