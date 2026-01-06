@@ -15,18 +15,17 @@ const app = express();
 // Charger la configuration en fonction de l'environnement
 const env = process.env.NODE_ENV || 'development';
 const config = require('./config');
-
-const envConfig = config[env === 'production' ? 'production' : 'development'] || {};
+const envConfig = config[env] || config.development || {};
 
 // Configuration du proxy (nécessaire pour Railway et derrière un reverse proxy)
 const trustProxy = process.env.NODE_ENV === 'production' || 
                    process.env.TRUST_PROXY === 'true' ||
                    process.env.RAILWAY_ENVIRONMENT === 'production';
-app.set('trust proxy', process.env.NODE_ENV === 'production' ? 1 : 0);
+app.set('trust proxy', trustProxy ? 1 : 0);
+
 // Importer les routes et les middlewares
 const routes = require('./routes');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
-const { sequelize, testConnection } = require('./config/database');
 const { syncDatabase } = require('./models');
 
 // Configuration des logs d'accès
@@ -103,9 +102,6 @@ if (fs.existsSync(path.join(__dirname, '..', 'uploads'))) {
   }));
 }
 
-// Routes de l'API
-app.use('/api', routes);
-
 // Route de santé pour les vérifications de disponibilité
 app.get('/health', (req, res) => {
   res.status(StatusCodes.OK).json({
@@ -128,24 +124,7 @@ app.get('/', (req, res) => {
   });
 });
 
-// Gestion des erreurs 404
-app.use(notFoundHandler);
-
-// Gestion des erreurs globales
-app.use(errorHandler);
-
-// Health check endpoint specifically for Railway
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV,
-    database: 'connected'
-  });
-});
-
-// API Routes
+// Routes de l'API
 app.use('/api', routes);
 
 // Serve frontend in production
@@ -157,15 +136,20 @@ if (process.env.NODE_ENV === 'production') {
 
   // Handle client-side routing - serve index.html for all non-API routes
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/uploads') || req.path === '/' || req.path === '/health') {
+    if (req.path.startsWith('/api') || 
+        req.path.startsWith('/uploads') || 
+        req.path === '/' || 
+        req.path === '/health') {
       return next();
     }
     res.sendFile(path.join(frontendPath, 'index.html'));
   });
 }
 
-// Error handling
+// Gestion des erreurs 404
 app.use(notFoundHandler);
+
+// Gestion des erreurs globales
 app.use(errorHandler);
 
 // Start server
@@ -178,17 +162,17 @@ const startServer = async () => {
     await syncDatabase(shouldReset);
     console.log('✅ Database synchronized successfully');
     
-    const port = process.env.PORT || config.port;
+    const PORT = process.env.PORT || 5000;
     
-    const server = app.listen(port, '0.0.0.0', () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`
 ========================================
   Construction Site Management API
 ========================================
-  Environment: ${config.nodeEnv}
-  Port: ${port}
+  Environment: ${env}
+  Port: ${PORT}
   Database: ${process.env.DATABASE_URL ? 'PostgreSQL' : 'SQLite'}
-  Health Check: http://0.0.0.0:${port}/health
+  Health Check: http://localhost:${PORT}/health
 ========================================
       `);
     });
@@ -225,10 +209,7 @@ const startServer = async () => {
 
 // Démarrer le serveur uniquement si ce fichier est exécuté directement
 if (require.main === module) {
-  const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => {
-    console.log(`Serveur démarré sur le port ${PORT}`);
-  });
+  startServer();
 }
 
 module.exports = app;
