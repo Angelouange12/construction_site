@@ -9,21 +9,22 @@ const rfs = require('rotating-file-stream');
 const compression = require('compression');
 const { StatusCodes } = require('http-status-codes');
 
+// Initialiser l'application Express
+const app = express();
+
 // Charger la configuration en fonction de l'environnement
 const env = process.env.NODE_ENV || 'development';
-const config = require('./config')[env === 'production' ? 'production' : 'development'];
+const config = require('./config');
+const envConfig = config[env === 'production' ? 'production' : 'development'] || {};
+
+// Configuration du proxy (nécessaire pour Railway et derrière un reverse proxy)
+app.set('trust proxy', envConfig.server?.trustProxy ? 1 : 0);
 
 // Importer les routes et les middlewares
 const routes = require('./routes');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { sequelize, testConnection } = require('./config/database');
 const { syncDatabase } = require('./models');
-
-// Initialiser l'application Express
-const app = express();
-
-// Configuration du proxy (nécessaire pour Railway et derrière un reverse proxy)
-app.set('trust proxy', config.server?.trustProxy ? 1 : 0);
 
 // Configuration des logs d'accès
 const logDirectory = path.join(__dirname, '..', 'logs');
@@ -46,24 +47,45 @@ const accessLogStream = rfs.createStream('access.log', {
 app.use(compression());
 
 // Middleware de logging
-app.use(morgan(config.server.logLevel, { 
-  stream: process.env.NODE_ENV === 'production' ? accessLogStream : process.stdout 
+const logFormat = env === 'production' ? 'combined' : 'dev';
+app.use(morgan(logFormat, { 
+  stream: env === 'production' ? accessLogStream : process.stdout 
 }));
 
 // Middleware de sécurité
-app.use(helmet(config.security.helmet));
+app.use(helmet({
+  contentSecurityPolicy: false, // Désactiver si vous avez des problèmes avec les ressources externes
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
 
-// Configuration CORS
-app.use(cors(config.server.cors));
+// Configuration CORS avec des valeurs par défaut sécurisées
+const corsOptions = envConfig.server?.cors || {
+  origin: env === 'production' 
+    ? [
+        'https://constructionsite-production.up.railway.app',
+        'https://chic-exploration-production.up.railway.app',
+        'https://*.railway.app'
+      ]
+    : 'http://localhost:3000',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  maxAge: 600
+};
+
+app.use(cors(corsOptions));
 
 // Middleware pour parser le corps des requêtes
-app.use(express.json(config.server.bodyParser.json));
-app.use(express.urlencoded({ ...config.server.bodyParser.urlencoded }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Middleware de limitation de débit (rate limiting)
 const limiter = rateLimit({
-  windowMs: config.rateLimit.windowMs,
-  max: config.rateLimit.max,
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limite chaque IP à 100 requêtes par fenêtre
+  standardHeaders: true,
+  legacyHeaders: false,
   message: 'Trop de requêtes depuis cette adresse IP, veuillez réessayer plus tard.'
 });
 
