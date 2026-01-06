@@ -1,157 +1,3 @@
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const morgan = require('morgan');
-const fs = require('fs');
-const rfs = require('rotating-file-stream');
-const compression = require('compression');
-const { StatusCodes } = require('http-status-codes');
-
-// Initialiser l'application Express
-const app = express();
-
-// Charger la configuration en fonction de l'environnement
-const env = process.env.NODE_ENV || 'development';
-const config = require('./config');
-const envConfig = config[env] || config.development || {};
-
-// Configuration du proxy (nécessaire pour Railway et derrière un reverse proxy)
-const trustProxy = process.env.NODE_ENV === 'production' || 
-                   process.env.TRUST_PROXY === 'true' ||
-                   process.env.RAILWAY_ENVIRONMENT === 'production';
-app.set('trust proxy', trustProxy ? 1 : 0);
-
-// Importer les routes et les middlewares
-const routes = require('./routes');
-const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
-const { syncDatabase } = require('./models');
-
-// Configuration des logs d'accès
-const logDirectory = path.join(__dirname, '..', 'logs');
-
-// Créer le répertoire des logs s'il n'existe pas
-if (!fs.existsSync(logDirectory)) {
-  fs.mkdirSync(logDirectory, { recursive: true });
-}
-
-// Créer un flux de rotation pour les logs d'accès
-const accessLogStream = rfs.createStream('access.log', {
-  interval: '1d', // rotation quotidienne
-  path: logDirectory,
-  compress: 'gzip',
-  size: '10M',
-  maxFiles: 7 // conserver les logs pendant 7 jours
-});
-
-// Middleware de compression des réponses
-app.use(compression());
-
-// Middleware de logging
-const logFormat = env === 'production' ? 'combined' : 'dev';
-app.use(morgan(logFormat, { 
-  stream: env === 'production' ? accessLogStream : process.stdout 
-}));
-
-// Middleware de sécurité
-app.use(helmet({
-  contentSecurityPolicy: false, // Désactiver si vous avez des problèmes avec les ressources externes
-  crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: 'cross-origin' }
-}));
-
-// Configuration CORS avec des valeurs par défaut sécurisées
-const corsOptions = envConfig.server?.cors || {
-  origin: env === 'production' 
-    ? [
-        'https://constructionsite-production.up.railway.app',
-        'https://chic-exploration-production.up.railway.app',
-        'https://*.railway.app'
-      ]
-    : 'http://localhost:3000',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-  maxAge: 600
-};
-
-app.use(cors(corsOptions));
-
-// Middleware pour parser le corps des requêtes
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Middleware de limitation de débit (rate limiting)
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limite chaque IP à 100 requêtes par fenêtre
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: 'Trop de requêtes depuis cette adresse IP, veuillez réessayer plus tard.'
-});
-
-// Appliquer à toutes les requêtes
-app.use(limiter);
-
-// Servir les fichiers statiques
-if (fs.existsSync(path.join(__dirname, '..', 'uploads'))) {
-  app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads'), {
-    maxAge: '1y', // Mise en cache pour 1 an
-    etag: true
-  }));
-}
-
-// Route de santé pour les vérifications de disponibilité
-app.get('/health', (req, res) => {
-  res.status(StatusCodes.OK).json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    environment: env,
-    database: 'connected',
-    version: require('../package.json').version
-  });
-});
-
-// Route racine
-app.get('/', (req, res) => {
-  res.status(StatusCodes.OK).json({
-    name: 'Construction Site Management API',
-    version: require('../package.json').version,
-    environment: env,
-    documentation: '/api-docs', // Si vous utilisez Swagger/OpenAPI
-    status: 'running'
-  });
-});
-
-// Routes de l'API
-app.use('/api', routes);
-
-// Serve frontend in production
-if (process.env.NODE_ENV === 'production') {
-  const frontendPath = path.join(__dirname, '..', '..', 'frontend', 'dist');
-  
-  // Serve static files from the frontend build
-  app.use(express.static(frontendPath));
-
-  // Handle client-side routing - serve index.html for all non-API routes
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || 
-        req.path.startsWith('/uploads') || 
-        req.path === '/' || 
-        req.path === '/health') {
-      return next();
-    }
-    res.sendFile(path.join(frontendPath, 'index.html'));
-  });
-}
-
-// Gestion des erreurs 404
-app.use(notFoundHandler);
-
-// Gestion des erreurs globales
-app.use(errorHandler);
-
 // Start server
 const startServer = async () => {
   try {
@@ -164,6 +10,7 @@ const startServer = async () => {
     
     const PORT = process.env.PORT || 5000;
     
+    // DÉMARRER LE SERVEUR ICI - NE PAS OUBLIER !
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`
 ========================================
@@ -172,7 +19,7 @@ const startServer = async () => {
   Environment: ${env}
   Port: ${PORT}
   Database: ${process.env.DATABASE_URL ? 'PostgreSQL' : 'SQLite'}
-  Health Check: http://localhost:${PORT}/health
+  Health Check: http://0.0.0.0:${PORT}/health
 ========================================
       `);
     });
@@ -211,5 +58,3 @@ const startServer = async () => {
 if (require.main === module) {
   startServer();
 }
-
-module.exports = app;
