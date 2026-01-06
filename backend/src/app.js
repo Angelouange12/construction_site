@@ -15,11 +15,14 @@ const app = express();
 // Charger la configuration en fonction de l'environnement
 const env = process.env.NODE_ENV || 'development';
 const config = require('./config');
+
 const envConfig = config[env === 'production' ? 'production' : 'development'] || {};
 
 // Configuration du proxy (nécessaire pour Railway et derrière un reverse proxy)
-app.set('trust proxy', envConfig.server?.trustProxy ? 1 : 0);
-
+const trustProxy = process.env.NODE_ENV === 'production' || 
+                   process.env.TRUST_PROXY === 'true' ||
+                   process.env.RAILWAY_ENVIRONMENT === 'production';
+app.set('trust proxy', process.env.NODE_ENV === 'production' ? 1 : 0);
 // Importer les routes et les middlewares
 const routes = require('./routes');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
