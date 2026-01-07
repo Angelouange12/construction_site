@@ -1,18 +1,17 @@
 module.exports = {
   // Configuration du serveur
   server: {
-    port: process.env.PORT || 5000,
+    port: process.env.PORT || 10000,
     env: 'production',
-    logLevel: 'combined', // 'combined', 'common', 'dev', 'short', 'tiny'
+    logLevel: 'combined',
     trustProxy: true,
     // Configuration CORS pour la production
     cors: {
       origin: [
-        'https://constructionsite-production.up.railway.app/',
-        'https://chic-exploration-production.up.railway.app/',
         process.env.FRONTEND_URL,
-        process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null,
-        'https://*.railway.app'
+        process.env.RENDER_EXTERNAL_URL,
+        'https://*.onrender.com',
+        'http://localhost:3000' // Pour les tests locaux
       ].filter(Boolean),
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -29,9 +28,8 @@ module.exports = {
 
   // Configuration de la base de données
   database: {
-    dialect: process.env.DB_DIALECT || 'sqlite',
-    storage: process.env.DB_STORAGE || '/tmp/database.sqlite',
-    logging: false,
+    dialect: 'postgres',
+    logging: process.env.NODE_ENV !== 'production' ? console.log : false,
     define: {
       timestamps: true,
       paranoid: true,
@@ -40,12 +38,15 @@ module.exports = {
     pool: {
       max: 10,
       min: 0,
-      acquire: 30000,
+      acquire: 60000, // Augmenté pour les environnements cloud
       idle: 10000
     },
-    // Configuration spécifique à SQLite
+    // Configuration spécifique à PostgreSQL
     dialectOptions: {
-      // Configuration pour SQLite
+      ssl: process.env.NODE_ENV === 'production' ? {
+        require: true,
+        rejectUnauthorized: false
+      } : false
     }
   },
 

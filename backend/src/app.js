@@ -1,3 +1,41 @@
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const { syncDatabase } = require('./models');
+const apiRoutes = require('./routes');
+
+// Create Express app
+const app = express();
+
+// Apply middleware
+app.use(helmet()); // Sécurité
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  credentials: true
+}));
+app.use(express.json());
+app.use(morgan('dev')); // Logging des requêtes
+
+// Routes
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// API Routes
+app.use('/api', apiRoutes);
+
+// 404 Handler
+app.use((req, res, next) => {
+  res.status(404).json({ message: 'Route not found' });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ message: 'Something went wrong!', error: process.env.NODE_ENV === 'development' ? err.message : {} });
+});
+
 // Start server
 const startServer = async () => {
   try {
@@ -8,23 +46,25 @@ const startServer = async () => {
     await syncDatabase(shouldReset);
     console.log('✅ Database synchronized successfully');
     
-    const PORT = process.env.PORT || 5000;
+    // Use Render's default port or fallback to 5000
+    const PORT = process.env.PORT || 10000;
     
-    // DÉMARRER LE SERVEUR ICI - NE PAS OUBLIER !
+    // Start the server
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`
 ========================================
   Construction Site Management API
 ========================================
-  Environment: ${env}
+  Environment: ${process.env.NODE_ENV || 'development'}
   Port: ${PORT}
   Database: ${process.env.DATABASE_URL ? 'PostgreSQL' : 'SQLite'}
   Health Check: http://0.0.0.0:${PORT}/health
+  Server URL: ${process.env.RENDER_EXTERNAL_URL || 'http://localhost:' + PORT}
 ========================================
       `);
     });
     
-    // Graceful shutdown handler for Railway
+    // Graceful shutdown handler for Render
     process.on('SIGTERM', () => {
       console.log('🔻 SIGTERM received: graceful shutdown initiated');
       server.close(() => {
@@ -32,11 +72,11 @@ const startServer = async () => {
         process.exit(0);
       });
       
-      // Force shutdown after 10 seconds if graceful fails
+      // Force shutdown after 5 seconds if graceful fails
       setTimeout(() => {
         console.log('⏰ Force shutdown after timeout');
         process.exit(1);
-      }, 10000);
+      }, 5000);
     });
     
     // Handle uncaught errors

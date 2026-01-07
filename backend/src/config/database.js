@@ -24,22 +24,50 @@ let sequelize;
 
 // Configuration de la connexion à la base de données
 if (process.env.DATABASE_URL) {
-  // Configuration pour PostgreSQL (production sur Railway)
+  // Configuration pour PostgreSQL (production sur Render)
   console.log('🔗 Using PostgreSQL (DATABASE_URL)');
+  
+  // Configuration SSL pour PostgreSQL
+  const sslConfig = process.env.NODE_ENV === 'production' 
+    ? {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false
+        }
+      }
+    : {};
+  
   sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
-    dialectOptions: process.env.NODE_ENV === 'production' ? {
-      ssl: {
-        require: true,
-        rejectUnauthorized: false
-      }
-    } : {},
+    protocol: 'postgres',
     logging,
     ...dbConfig,
+    dialectOptions: {
+      ...sslConfig,
+      ...(dbConfig.dialectOptions || {})
+    },
     pool: {
       ...dbConfig.pool,
       // Délai d'attente plus long pour les connexions en production
       acquire: process.env.NODE_ENV === 'production' ? 60000 : 30000,
+    }
+  });
+} else if (process.env.DB_URL) {
+  // Configuration pour PostgreSQL avec URL complète
+  console.log('🔗 Using PostgreSQL (DB_URL)');
+  
+  sequelize = new Sequelize(process.env.DB_URL, {
+    dialect: 'postgres',
+    logging,
+    ...dbConfig,
+    dialectOptions: {
+      ...(process.env.NODE_ENV === 'production' ? {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false
+        }
+      } : {}),
+      ...(dbConfig.dialectOptions || {})
     }
   });
 } else {
