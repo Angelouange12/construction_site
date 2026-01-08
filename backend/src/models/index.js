@@ -1,191 +1,76 @@
 require('dotenv').config();
 const { Sequelize } = require('sequelize');
-const config = require('../config/database');
+const { sequelize } = require('../config/database'); // Import the sequelize instance from config
 
-// Get the database configuration based on environment
-const env = process.env.NODE_ENV || 'development';
-const dbConfig = config[env];
-
-// Initialize Sequelize with explicit dialect
-const sequelize = new Sequelize({
-  dialect: dbConfig.dialect || 'sqlite', // Default to sqlite if not specified
-  ...dbConfig,
-  // Ensure these are not overridden by dbConfig
-  logging: dbConfig.logging,
-  storage: dbConfig.storage, // For SQLite
-  host: dbConfig.host,
-  port: dbConfig.port,
-  database: dbConfig.database,
-  username: dbConfig.username,
-  password: dbConfig.password,
-  dialectOptions: dbConfig.dialectOptions || {},
-  pool: dbConfig.pool || {
-    max: 5,
-    min: 0,
-    acquire: 30000,
-    idle: 10000
-  }
-});
+// Import models
 const User = require('./User');
 const Site = require('./Site');
+const Project = require('./Project');
 const Task = require('./Task');
-const Worker = require('./Worker');
-const Attendance = require('./Attendance');
-const Material = require('./Material');
-const MaterialUsage = require('./MaterialUsage');
-const Expense = require('./Expense');
-const Incident = require('./Incident');
-const Budget = require('./Budget');
-const Attachment = require('./Attachment');
-const Notification = require('./Notification');
 const Assignment = require('./Assignment');
 const AssignmentHistory = require('./AssignmentHistory');
-const AuditLog = require('./AuditLog');
-const CalendarEvent = require('./CalendarEvent');
-const Timesheet = require('./Timesheet');
+const Notification = require('./Notification');
 
-// ============================================
-// Original Model Associations
-// ============================================
+// Import model definitions
+const UserModel = User(sequelize);
+const SiteModel = Site(sequelize);
+const ProjectModel = Project(sequelize);
+const TaskModel = Task(sequelize);
+const AssignmentModel = Assignment(sequelize);
+const AssignmentHistoryModel = AssignmentHistory(sequelize);
+const NotificationModel = Notification(sequelize);
 
-// User - Site (Manager relationship)
-User.hasMany(Site, { foreignKey: 'managerId', as: 'managedSites' });
-Site.belongsTo(User, { foreignKey: 'managerId', as: 'manager' });
+// Define associations
+// Site - Project (One-to-Many)
+SiteModel.hasMany(ProjectModel, { foreignKey: 'siteId', as: 'projects' });
+ProjectModel.belongsTo(SiteModel, { foreignKey: 'siteId', as: 'site' });
 
-// Site - Task
-Site.hasMany(Task, { foreignKey: 'siteId', as: 'tasks', onDelete: 'CASCADE' });
-Task.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
+// Project - Task (One-to-Many)
+ProjectModel.hasMany(TaskModel, { foreignKey: 'projectId', as: 'tasks' });
+TaskModel.belongsTo(ProjectModel, { foreignKey: 'projectId', as: 'project' });
 
-// Site - Worker
-Site.hasMany(Worker, { foreignKey: 'siteId', as: 'workers' });
-Worker.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
+// User - Assignment (One-to-Many)
+UserModel.hasMany(AssignmentModel, { foreignKey: 'userId', as: 'assignments' });
+AssignmentModel.belongsTo(UserModel, { foreignKey: 'userId', as: 'user' });
 
-// Worker - Task (Assignment)
-Worker.hasMany(Task, { foreignKey: 'workerId', as: 'tasks' });
-Task.belongsTo(Worker, { foreignKey: 'workerId', as: 'worker' });
+// Task - Assignment (One-to-Many)
+TaskModel.hasMany(AssignmentModel, { foreignKey: 'taskId', as: 'assignments' });
+AssignmentModel.belongsTo(TaskModel, { foreignKey: 'taskId', as: 'task' });
 
-// Worker - User (Optional link for ouvrier role)
-User.hasOne(Worker, { foreignKey: 'userId', as: 'workerProfile' });
-Worker.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+// Assignment - AssignmentHistory (One-to-Many)
+AssignmentModel.hasMany(AssignmentHistoryModel, { foreignKey: 'assignmentId', as: 'history' });
+AssignmentHistoryModel.belongsTo(AssignmentModel, { foreignKey: 'assignmentId', as: 'assignment' });
 
-// Worker - Attendance
-Worker.hasMany(Attendance, { foreignKey: 'workerId', as: 'attendance', onDelete: 'CASCADE' });
-Attendance.belongsTo(Worker, { foreignKey: 'workerId', as: 'worker' });
+// User - AssignmentHistory (Changed by)
+UserModel.hasMany(AssignmentHistoryModel, { foreignKey: 'changedBy', as: 'assignmentChanges' });
+AssignmentHistoryModel.belongsTo(UserModel, { foreignKey: 'changedBy', as: 'changer' });
 
-// Site - Attendance
-Site.hasMany(Attendance, { foreignKey: 'siteId', as: 'attendance' });
-Attendance.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
-
-// Material - MaterialUsage
-Material.hasMany(MaterialUsage, { foreignKey: 'materialId', as: 'usage', onDelete: 'CASCADE' });
-MaterialUsage.belongsTo(Material, { foreignKey: 'materialId', as: 'material' });
-
-// Site - MaterialUsage
-Site.hasMany(MaterialUsage, { foreignKey: 'siteId', as: 'materialUsage', onDelete: 'CASCADE' });
-MaterialUsage.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
-
-// Site - Expense
-Site.hasMany(Expense, { foreignKey: 'siteId', as: 'expenses', onDelete: 'CASCADE' });
-Expense.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
-
-// User - Expense (Approved by)
-User.hasMany(Expense, { foreignKey: 'approvedBy', as: 'approvedExpenses' });
-Expense.belongsTo(User, { foreignKey: 'approvedBy', as: 'approver' });
-
-// Site - Incident
-Site.hasMany(Incident, { foreignKey: 'siteId', as: 'incidents', onDelete: 'CASCADE' });
-Incident.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
-
-// User - Incident (Reported by)
-User.hasMany(Incident, { foreignKey: 'reportedBy', as: 'reportedIncidents' });
-Incident.belongsTo(User, { foreignKey: 'reportedBy', as: 'reporter' });
-
-// Site - Budget (One-to-One)
-Site.hasOne(Budget, { foreignKey: 'siteId', as: 'budget', onDelete: 'CASCADE' });
-Budget.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
-
-// ============================================
-// New Model Associations
-// ============================================
-
-// Attachment - User (Uploaded by)
-User.hasMany(Attachment, { foreignKey: 'uploadedBy', as: 'uploadedAttachments' });
-Attachment.belongsTo(User, { foreignKey: 'uploadedBy', as: 'uploader' });
-
-// Notification - User
-User.hasMany(Notification, { foreignKey: 'userId', as: 'notifications' });
-Notification.belongsTo(User, { foreignKey: 'userId', as: 'user' });
-
-// Assignment - User (Assigned by)
-User.hasMany(Assignment, { foreignKey: 'assignedBy', as: 'createdAssignments' });
-Assignment.belongsTo(User, { foreignKey: 'assignedBy', as: 'assigner' });
-
-// Assignment - AssignmentHistory
-Assignment.hasMany(AssignmentHistory, { foreignKey: 'assignmentId', as: 'history' });
-AssignmentHistory.belongsTo(Assignment, { foreignKey: 'assignmentId', as: 'assignment' });
-
-// AssignmentHistory - User (Changed by)
-User.hasMany(AssignmentHistory, { foreignKey: 'changedBy', as: 'assignmentChanges' });
-AssignmentHistory.belongsTo(User, { foreignKey: 'changedBy', as: 'changer' });
-
-// AuditLog - User
-User.hasMany(AuditLog, { foreignKey: 'userId', as: 'auditLogs' });
-AuditLog.belongsTo(User, { foreignKey: 'userId', as: 'user' });
-
-// CalendarEvent associations
-Site.hasMany(CalendarEvent, { foreignKey: 'siteId', as: 'calendarEvents' });
-CalendarEvent.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
-
-Task.hasMany(CalendarEvent, { foreignKey: 'taskId', as: 'calendarEvents' });
-CalendarEvent.belongsTo(Task, { foreignKey: 'taskId', as: 'task' });
-
-Worker.hasMany(CalendarEvent, { foreignKey: 'workerId', as: 'calendarEvents' });
-CalendarEvent.belongsTo(Worker, { foreignKey: 'workerId', as: 'worker' });
-
-User.hasMany(CalendarEvent, { foreignKey: 'createdBy', as: 'createdEvents' });
-CalendarEvent.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
-
-// Timesheet associations
-Worker.hasMany(Timesheet, { foreignKey: 'workerId', as: 'timesheets' });
-Timesheet.belongsTo(Worker, { foreignKey: 'workerId', as: 'worker' });
-
-Site.hasMany(Timesheet, { foreignKey: 'siteId', as: 'timesheets' });
-Timesheet.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
-
-User.hasMany(Timesheet, { foreignKey: 'approvedBy', as: 'approvedTimesheets' });
-Timesheet.belongsTo(User, { foreignKey: 'approvedBy', as: 'approver' });
+// User - Notification (One-to-Many)
+UserModel.hasMany(NotificationModel, { foreignKey: 'userId', as: 'notifications' });
+NotificationModel.belongsTo(UserModel, { foreignKey: 'userId', as: 'user' });
 
 // ============================================
 // Database Sync Function
 // ============================================
-const syncDatabase = async (force = false) => {
+async function syncDatabase(force = false) {
   try {
     await sequelize.sync({ force });
-    console.log('Database synchronized successfully');
+    console.log('✅ Database synchronized successfully');
+    return true;
   } catch (error) {
-    console.error('Error synchronizing database:', error);
-    throw error;
+    console.error('❌ Error synchronizing database:', error);
+    return false;
   }
-};
+}
 
 module.exports = {
   sequelize,
-  User,
-  Site,
-  Task,
-  Worker,
-  Attendance,
-  Material,
-  MaterialUsage,
-  Expense,
-  Incident,
-  Budget,
-  Attachment,
-  Notification,
-  Assignment,
-  AssignmentHistory,
-  AuditLog,
-  CalendarEvent,
-  Timesheet,
-  syncDatabase
+  syncDatabase,
+  User: UserModel,
+  Site: SiteModel,
+  Project: ProjectModel,
+  Task: TaskModel,
+  Assignment: AssignmentModel,
+  AssignmentHistory: AssignmentHistoryModel,
+  Notification: NotificationModel
 };
