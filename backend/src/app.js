@@ -17,23 +17,72 @@ app.use(cors({
 app.use(express.json());
 app.use(morgan('dev')); // Logging des requêtes
 
-// Routes
+// ============================================
+// ROUTE RACINE AJOUTÉE ICI
+// ============================================
+app.get('/', (req, res) => {
+  res.json({
+    message: '🚀 Construction Site Management API',
+    version: '1.0.0',
+    environment: process.env.NODE_ENV || 'development',
+    health: '/health',
+    status: 'online',
+    database: process.env.DATABASE_URL ? 'PostgreSQL' : 'SQLite',
+    documentation: 'https://github.com/your-repo/docs',
+    endpoints: {
+      health: '/health',
+      api: '/api',
+      users: '/api/users',
+      sites: '/api/sites',
+      tasks: '/api/tasks',
+      workers: '/api/workers',
+      incidents: '/api/incidents',
+      materials: '/api/materials'
+    },
+    timestamps: new Date().toISOString()
+  });
+});
+
+// Health check route
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'ok', 
+    database: 'connected',
+    timestamp: new Date().toISOString() 
+  });
 });
 
 // API Routes
 app.use('/api', apiRoutes);
 
+// ============================================
+// ROUTE POUR LES FAVICON (éviter les 404)
+// ============================================
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end(); // No Content
+});
+
 // 404 Handler
 app.use((req, res, next) => {
-  res.status(404).json({ message: 'Route not found' });
+  res.status(404).json({ 
+    message: 'Route not found',
+    requested: req.originalUrl,
+    available_endpoints: {
+      root: '/',
+      health: '/health',
+      api: '/api/*'
+    }
+  });
 });
 
 // Error handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ message: 'Something went wrong!', error: process.env.NODE_ENV === 'development' ? err.message : {} });
+  console.error('💥 Error:', err.stack);
+  res.status(500).json({ 
+    message: 'Something went wrong!', 
+    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Start server
@@ -98,3 +147,5 @@ const startServer = async () => {
 if (require.main === module) {
   startServer();
 }
+
+module.exports = app; // Pour les tests

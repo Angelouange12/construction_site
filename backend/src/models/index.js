@@ -1,31 +1,12 @@
+// backend/src/models/index.js - VERSION CORRIGÉE
 require('dotenv').config();
-const { Sequelize } = require('sequelize');
-const config = require('../config/database');
+const { Sequelize, DataTypes } = require('sequelize');
+const { sequelize } = require('../config/database'); // Import simplifié
 
-// Get the database configuration based on environment
-const env = process.env.NODE_ENV || 'development';
-const dbConfig = config[env];
+// ============================================
+// IMPORT MODELS - IMPORT DIRECT SANS (sequelize, DataTypes)
+// ============================================
 
-// Initialize Sequelize with explicit dialect
-const sequelize = new Sequelize({
-  dialect: dbConfig.dialect || 'sqlite', // Default to sqlite if not specified
-  ...dbConfig,
-  // Ensure these are not overridden by dbConfig
-  logging: dbConfig.logging,
-  storage: dbConfig.storage, // For SQLite
-  host: dbConfig.host,
-  port: dbConfig.port,
-  database: dbConfig.database,
-  username: dbConfig.username,
-  password: dbConfig.password,
-  dialectOptions: dbConfig.dialectOptions || {},
-  pool: dbConfig.pool || {
-    max: 5,
-    min: 0,
-    acquire: 30000,
-    idle: 10000
-  }
-});
 const User = require('./User');
 const Site = require('./Site');
 const Task = require('./Task');
@@ -161,10 +142,11 @@ Timesheet.belongsTo(User, { foreignKey: 'approvedBy', as: 'approver' });
 const syncDatabase = async (force = false) => {
   try {
     await sequelize.sync({ force });
-    console.log('Database synchronized successfully');
+    console.log('✅ Database synchronized successfully');
+    return true;
   } catch (error) {
-    console.error('Error synchronizing database:', error);
-    throw error;
+    console.error('❌ Error synchronizing database:', error);
+    return false;
   }
 };
 
