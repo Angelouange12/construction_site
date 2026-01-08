@@ -18,7 +18,6 @@ app.use(cors({
     const allowedOrigins = [
       'http://localhost:3000',
       'http://127.0.0.1:3000',
-      'postgresql://construction_site_user:NS4xCMlbbDKUlH7EOg0WZS4fP85pBwIz@dpg-d5f8jt75r7bs73ca08fg-a/construction_site_gzif',
       'https://construction-site-frontend-f08z.onrender.com'
     ];
     

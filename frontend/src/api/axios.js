@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 
   (process.env.NODE_ENV === 'production' 
-    ? 'https://construction-site-api-8llr.onrender.com/' 
+    ? 'https://construction-site-api-8llr.onrender.com/api' 
     : 'http://localhost:10000/api');
 
 const api = axios.create({
