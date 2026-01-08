@@ -1,85 +1,191 @@
-const { sequelize, Sequelize } = require('../config/database');
-const DataTypes = Sequelize.DataTypes;
-const fs = require('fs');
-const path = require('path');
+require('dotenv').config();
+const { Sequelize } = require('sequelize');
+const config = require('../config/database');
 
-// Liste des modèles disponibles
-const modelFiles = fs.readdirSync(__dirname)
-  .filter(file => file.endsWith('.js') && file !== 'index.js')
-  .map(file => file.replace('.js', ''));
+// Get the database configuration based on environment
+const env = process.env.NODE_ENV || 'development';
+const dbConfig = config[env];
 
-console.log('📁 Available models:', modelFiles);
-
-// Charger dynamiquement tous les modèles
-const models = {};
-modelFiles.forEach(modelName => {
-  try {
-    const modelPath = `./${modelName}`;
-    models[modelName] = require(modelPath)(sequelize, DataTypes);
-    console.log(`✅ Loaded model: ${modelName}`);
-  } catch (error) {
-    console.error(`❌ Failed to load model ${modelName}:`, error.message);
+// Initialize Sequelize with explicit dialect
+const sequelize = new Sequelize({
+  dialect: dbConfig.dialect || 'sqlite', // Default to sqlite if not specified
+  ...dbConfig,
+  // Ensure these are not overridden by dbConfig
+  logging: dbConfig.logging,
+  storage: dbConfig.storage, // For SQLite
+  host: dbConfig.host,
+  port: dbConfig.port,
+  database: dbConfig.database,
+  username: dbConfig.username,
+  password: dbConfig.password,
+  dialectOptions: dbConfig.dialectOptions || {},
+  pool: dbConfig.pool || {
+    max: 5,
+    min: 0,
+    acquire: 30000,
+    idle: 10000
   }
 });
+const User = require('./User');
+const Site = require('./Site');
+const Task = require('./Task');
+const Worker = require('./Worker');
+const Attendance = require('./Attendance');
+const Material = require('./Material');
+const MaterialUsage = require('./MaterialUsage');
+const Expense = require('./Expense');
+const Incident = require('./Incident');
+const Budget = require('./Budget');
+const Attachment = require('./Attachment');
+const Notification = require('./Notification');
+const Assignment = require('./Assignment');
+const AssignmentHistory = require('./AssignmentHistory');
+const AuditLog = require('./AuditLog');
+const CalendarEvent = require('./CalendarEvent');
+const Timesheet = require('./Timesheet');
 
-// Si vous voulez des alias spécifiques (optionnel)
-const {
-  User,
-  Site,
-  Task,
-  Incident,
-  Material,
-  Photo
-  // Project // seulement si le fichier existe
-} = models;
+// ============================================
+// Original Model Associations
+// ============================================
 
-// Définir les associations (seulement si les modèles existent)
-if (User && Site) {
-  User.hasMany(Site, { foreignKey: 'userId', as: 'sites' });
-  Site.belongsTo(User, { foreignKey: 'userId', as: 'user' });
-}
+// User - Site (Manager relationship)
+User.hasMany(Site, { foreignKey: 'managerId', as: 'managedSites' });
+Site.belongsTo(User, { foreignKey: 'managerId', as: 'manager' });
 
-if (Site && Task) {
-  Site.hasMany(Task, { foreignKey: 'siteId', as: 'tasks' });
-  Task.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
-}
+// Site - Task
+Site.hasMany(Task, { foreignKey: 'siteId', as: 'tasks', onDelete: 'CASCADE' });
+Task.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
 
-if (Site && Incident) {
-  Site.hasMany(Incident, { foreignKey: 'siteId', as: 'incidents' });
-  Incident.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
-}
+// Site - Worker
+Site.hasMany(Worker, { foreignKey: 'siteId', as: 'workers' });
+Worker.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
 
-if (Site && Material) {
-  Site.hasMany(Material, { foreignKey: 'siteId', as: 'materials' });
-  Material.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
-}
+// Worker - Task (Assignment)
+Worker.hasMany(Task, { foreignKey: 'workerId', as: 'tasks' });
+Task.belongsTo(Worker, { foreignKey: 'workerId', as: 'worker' });
 
-if (Site && Photo) {
-  Site.hasMany(Photo, { foreignKey: 'siteId', as: 'photos' });
-  Photo.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
-}
+// Worker - User (Optional link for ouvrier role)
+User.hasOne(Worker, { foreignKey: 'userId', as: 'workerProfile' });
+Worker.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
-if (User && Task) {
-  User.hasMany(Task, { foreignKey: 'assignedTo', as: 'assignedTasks' });
-  Task.belongsTo(User, { foreignKey: 'assignedTo', as: 'assignedUser' });
-}
+// Worker - Attendance
+Worker.hasMany(Attendance, { foreignKey: 'workerId', as: 'attendance', onDelete: 'CASCADE' });
+Attendance.belongsTo(Worker, { foreignKey: 'workerId', as: 'worker' });
 
-// Synchroniser la base de données
+// Site - Attendance
+Site.hasMany(Attendance, { foreignKey: 'siteId', as: 'attendance' });
+Attendance.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
+
+// Material - MaterialUsage
+Material.hasMany(MaterialUsage, { foreignKey: 'materialId', as: 'usage', onDelete: 'CASCADE' });
+MaterialUsage.belongsTo(Material, { foreignKey: 'materialId', as: 'material' });
+
+// Site - MaterialUsage
+Site.hasMany(MaterialUsage, { foreignKey: 'siteId', as: 'materialUsage', onDelete: 'CASCADE' });
+MaterialUsage.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
+
+// Site - Expense
+Site.hasMany(Expense, { foreignKey: 'siteId', as: 'expenses', onDelete: 'CASCADE' });
+Expense.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
+
+// User - Expense (Approved by)
+User.hasMany(Expense, { foreignKey: 'approvedBy', as: 'approvedExpenses' });
+Expense.belongsTo(User, { foreignKey: 'approvedBy', as: 'approver' });
+
+// Site - Incident
+Site.hasMany(Incident, { foreignKey: 'siteId', as: 'incidents', onDelete: 'CASCADE' });
+Incident.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
+
+// User - Incident (Reported by)
+User.hasMany(Incident, { foreignKey: 'reportedBy', as: 'reportedIncidents' });
+Incident.belongsTo(User, { foreignKey: 'reportedBy', as: 'reporter' });
+
+// Site - Budget (One-to-One)
+Site.hasOne(Budget, { foreignKey: 'siteId', as: 'budget', onDelete: 'CASCADE' });
+Budget.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
+
+// ============================================
+// New Model Associations
+// ============================================
+
+// Attachment - User (Uploaded by)
+User.hasMany(Attachment, { foreignKey: 'uploadedBy', as: 'uploadedAttachments' });
+Attachment.belongsTo(User, { foreignKey: 'uploadedBy', as: 'uploader' });
+
+// Notification - User
+User.hasMany(Notification, { foreignKey: 'userId', as: 'notifications' });
+Notification.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+// Assignment - User (Assigned by)
+User.hasMany(Assignment, { foreignKey: 'assignedBy', as: 'createdAssignments' });
+Assignment.belongsTo(User, { foreignKey: 'assignedBy', as: 'assigner' });
+
+// Assignment - AssignmentHistory
+Assignment.hasMany(AssignmentHistory, { foreignKey: 'assignmentId', as: 'history' });
+AssignmentHistory.belongsTo(Assignment, { foreignKey: 'assignmentId', as: 'assignment' });
+
+// AssignmentHistory - User (Changed by)
+User.hasMany(AssignmentHistory, { foreignKey: 'changedBy', as: 'assignmentChanges' });
+AssignmentHistory.belongsTo(User, { foreignKey: 'changedBy', as: 'changer' });
+
+// AuditLog - User
+User.hasMany(AuditLog, { foreignKey: 'userId', as: 'auditLogs' });
+AuditLog.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+// CalendarEvent associations
+Site.hasMany(CalendarEvent, { foreignKey: 'siteId', as: 'calendarEvents' });
+CalendarEvent.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
+
+Task.hasMany(CalendarEvent, { foreignKey: 'taskId', as: 'calendarEvents' });
+CalendarEvent.belongsTo(Task, { foreignKey: 'taskId', as: 'task' });
+
+Worker.hasMany(CalendarEvent, { foreignKey: 'workerId', as: 'calendarEvents' });
+CalendarEvent.belongsTo(Worker, { foreignKey: 'workerId', as: 'worker' });
+
+User.hasMany(CalendarEvent, { foreignKey: 'createdBy', as: 'createdEvents' });
+CalendarEvent.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+
+// Timesheet associations
+Worker.hasMany(Timesheet, { foreignKey: 'workerId', as: 'timesheets' });
+Timesheet.belongsTo(Worker, { foreignKey: 'workerId', as: 'worker' });
+
+Site.hasMany(Timesheet, { foreignKey: 'siteId', as: 'timesheets' });
+Timesheet.belongsTo(Site, { foreignKey: 'siteId', as: 'site' });
+
+User.hasMany(Timesheet, { foreignKey: 'approvedBy', as: 'approvedTimesheets' });
+Timesheet.belongsTo(User, { foreignKey: 'approvedBy', as: 'approver' });
+
+// ============================================
+// Database Sync Function
+// ============================================
 const syncDatabase = async (force = false) => {
   try {
     await sequelize.sync({ force });
-    console.log(`✅ Database synchronized ${force ? '(forced)' : ''}`);
-    return true;
+    console.log('Database synchronized successfully');
   } catch (error) {
-    console.error('❌ Database synchronization failed:', error);
-    return false;
+    console.error('Error synchronizing database:', error);
+    throw error;
   }
 };
 
-// Exporter tous les modèles et l'instance sequelize
 module.exports = {
   sequelize,
-  Sequelize,
-  syncDatabase,
-  ...models
+  User,
+  Site,
+  Task,
+  Worker,
+  Attendance,
+  Material,
+  MaterialUsage,
+  Expense,
+  Incident,
+  Budget,
+  Attachment,
+  Notification,
+  Assignment,
+  AssignmentHistory,
+  AuditLog,
+  CalendarEvent,
+  Timesheet,
+  syncDatabase
 };
