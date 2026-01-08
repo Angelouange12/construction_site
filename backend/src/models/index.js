@@ -1,7 +1,31 @@
 require('dotenv').config();
 const { Sequelize } = require('sequelize');
-const config = require('../config/database')[process.env.NODE_ENV || 'development'];
-const sequelize = new Sequelize(config);
+const config = require('../config/database');
+
+// Get the database configuration based on environment
+const env = process.env.NODE_ENV || 'development';
+const dbConfig = config[env];
+
+// Initialize Sequelize with explicit dialect
+const sequelize = new Sequelize({
+  dialect: dbConfig.dialect || 'sqlite', // Default to sqlite if not specified
+  ...dbConfig,
+  // Ensure these are not overridden by dbConfig
+  logging: dbConfig.logging,
+  storage: dbConfig.storage, // For SQLite
+  host: dbConfig.host,
+  port: dbConfig.port,
+  database: dbConfig.database,
+  username: dbConfig.username,
+  password: dbConfig.password,
+  dialectOptions: dbConfig.dialectOptions || {},
+  pool: dbConfig.pool || {
+    max: 5,
+    min: 0,
+    acquire: 30000,
+    idle: 10000
+  }
+});
 const User = require('./User');
 const Site = require('./Site');
 const Task = require('./Task');
