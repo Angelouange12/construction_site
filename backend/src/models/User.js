@@ -72,14 +72,13 @@ const User = sequelize.define('User', {
   }
 });
 
-// Instance method to compare password
+// Add instance methods for Sequelize v5+
 User.prototype.comparePassword = async function(candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
 
-// Instance method to return user without password
 User.prototype.toJSON = function() {
-  const values = { ...this.get() };
+  const values = Object.assign({}, this.get());
   delete values.password;
   return values;
 };

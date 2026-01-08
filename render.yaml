@@ -1,4 +1,5 @@
 services:
+  # Backend Service
   - type: web
     name: construction-site-api
     env: node
@@ -13,6 +14,35 @@ services:
         fromDatabase:
           name: construction-site-db
           property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 24h
+      - key: FRONTEND_URL
+        value: https://construction-site-frontend.onrender.com
+      - key: SQL_LOGGING
+        value: false
+    plan: free
+    autoDeploy: true
+
+  # Frontend Service
+  - type: static
+    name: construction-site-frontend
+    env: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://construction-site-api-8llr.onrender.com/api
+      - key: VITE_APP_ENV
+        value: production
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://construction-site-api-8llr.onrender.com/api/*
+      - type: rewrite
+        source: /uploads/*
+        destination: https://construction-site-api-8llr.onrender.com/uploads/*
     plan: free
     autoDeploy: true
 

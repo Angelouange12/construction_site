@@ -11,7 +11,29 @@ const app = express();
 // Apply middleware
 app.use(helmet()); // Sécurité
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'postgresql://construction_site_user:NS4xCMlbbDKUlH7EOg0WZS4fP85pBwIz@dpg-d5f8jt75r7bs73ca08fg-a/construction_site_gzif',
+      'https://construction-site-frontend-f08z.onrender.com'
+    ];
+    
+    // Allow any Render frontend URL
+    if (origin.includes('.onrender.com') && origin.includes('construction-site-frontend')) {
+      return callback(null, true);
+    }
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
+    } else {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+  },
   credentials: true
 }));
 app.use(express.json());
