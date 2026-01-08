@@ -5,173 +5,174 @@ const { Sequelize } = require('sequelize');
 // Configuration du logging
 const logging = process.env.SQL_LOGGING === 'true' ? console.log : false;
 
-// Base configuration
-const baseConfig = {
-  // Default to sqlite for development
-  development: {
+// Créer l'instance Sequelize directement
+let sequelize;
+
+console.log('🔍 Environment check:');
+console.log(`- NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+console.log(`- DATABASE_URL: ${process.env.DATABASE_URL ? 'Set' : 'Not set'}`);
+
+if (process.env.DATABASE_URL) {
+  console.log('🔗 Using PostgreSQL (DATABASE_URL)');
+  
+  try {
+    // Parse DATABASE_URL pour afficher les infos (sans le mot de passe)
+    const dbUrl = new URL(process.env.DATABASE_URL);
+    console.log(`📊 Database Info:`);
+    console.log(`  Host: ${dbUrl.hostname}`);
+    console.log(`  Port: ${dbUrl.port || '5432'}`);
+    console.log(`  Database: ${dbUrl.pathname.replace('/', '')}`);
+    console.log(`  Username: ${dbUrl.username}`);
+    
+    sequelize = new Sequelize(process.env.DATABASE_URL, {
+      dialect: 'postgres',
+      protocol: 'postgres',
+      logging,
+      dialectOptions: {
+        ssl: process.env.NODE_ENV === 'production' ? {
+          require: true,
+          rejectUnauthorized: false
+        } : false
+      },
+      pool: {
+        max: 10,
+        min: 0,
+        acquire: 30000,
+        idle: 10000
+      },
+      retry: {
+        match: [
+          /ETIMEDOUT/,
+          /EHOSTUNREACH/,
+          /ECONNRESET/,
+          /ECONNREFUSED/,
+          /ETIMEDOUT/,
+          /ESOCKETTIMEDOUT/,
+          /EHOSTUNREACH/,
+          /EPIPE/,
+          /EAI_AGAIN/,
+          /SequelizeConnectionError/,
+          /SequelizeConnectionRefusedError/,
+          /SequelizeHostNotFoundError/,
+          /SequelizeHostNotReachableError/,
+          /SequelizeInvalidConnectionError/,
+          /SequelizeConnectionTimedOutError/
+        ],
+        max: 3
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error parsing DATABASE_URL:', error.message);
+    process.exit(1);
+  }
+} else if (process.env.NODE_ENV === 'production') {
+  console.log('🚀 Using PostgreSQL (production environment variables)');
+  
+  // Vérifier les variables requises
+  const requiredEnvVars = ['DB_NAME', 'DB_USER', 'DB_PASSWORD', 'DB_HOST'];
+  const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+  
+  if (missingVars.length > 0) {
+    console.error(`❌ Missing required environment variables: ${missingVars.join(', ')}`);
+    process.exit(1);
+  }
+  
+  console.log(`📊 Database Info:`);
+  console.log(`  Host: ${process.env.DB_HOST}`);
+  console.log(`  Port: ${process.env.DB_PORT || '5432'}`);
+  console.log(`  Database: ${process.env.DB_NAME}`);
+  console.log(`  Username: ${process.env.DB_USER}`);
+  
+  sequelize = new Sequelize(
+    process.env.DB_NAME,
+    process.env.DB_USER,
+    process.env.DB_PASSWORD,
+    {
+      host: process.env.DB_HOST,
+      port: process.env.DB_PORT || 5432,
+      dialect: 'postgres',
+      logging,
+      dialectOptions: {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false
+        }
+      },
+      pool: {
+        max: 10,
+        min: 0,
+        acquire: 30000,
+        idle: 10000
+      }
+    }
+  );
+} else {
+  console.log('💾 Using SQLite for development');
+  
+  // Créer le répertoire logs si nécessaire
+  const logDir = path.join(__dirname, '../../logs');
+  if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
+    console.log(`📁 Created logs directory: ${logDir}`);
+  }
+  
+  const dbPath = path.join(__dirname, '..', 'database.sqlite');
+  console.log(`📂 Database path: ${dbPath}`);
+  
+  sequelize = new Sequelize({
     dialect: 'sqlite',
-    storage: path.join(__dirname, '..', 'database.sqlite'),
+    storage: dbPath,
     logging,
     pool: {
       max: 5,
       min: 0,
       acquire: 30000,
       idle: 10000
-    }
-  },
-  // Production configuration (uses DATABASE_URL environment variable)
-  production: {
-    dialect: 'postgres',
-    protocol: 'postgres',
-    logging,
-    pool: {
-      max: 5,
-      min: 0,
-      acquire: 60000,
-      idle: 10000
     },
-    dialectOptions: {
-      ssl: {
-        require: true,
-        rejectUnauthorized: false
-      }
+    retry: {
+      max: 2
     }
+  });
+}
+
+// Fonction pour tester la connexion
+async function testConnection() {
+  try {
+    await sequelize.authenticate();
+    console.log('✅ Database connection has been established successfully.');
+    
+    // Synchroniser les modèles en développement
+    if (process.env.NODE_ENV !== 'production' && !process.env.DATABASE_URL) {
+      console.log('🔄 Syncing database models...');
+      const { syncDatabase } = require('../models');
+      await syncDatabase();
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Unable to connect to the database:', error.message);
+    
+    // Afficher plus de détails pour le debug
+    if (error.original) {
+      console.error('🔍 Original error:', error.original.message);
+    }
+    
+    return false;
   }
-};
+}
 
-// Handle environment and configuration
-const env = process.env.NODE_ENV || 'development';
-const config = { ...baseConfig[env] };
-
-// Handle DATABASE_URL if provided
-if (process.env.DATABASE_URL) {
-  console.log('🔗 Using PostgreSQL (DATABASE_URL)');
-  const dbUrl = new URL(process.env.DATABASE_URL);
+// Exportations
+module.exports = {
+  sequelize,
+  testConnection,
+  Sequelize,
   
-  // Update config with DATABASE_URL values
-  config.username = dbUrl.username;
-  config.password = dbUrl.password;
-  config.host = dbUrl.hostname;
-  config.port = dbUrl.port;
-  config.database = dbUrl.pathname.replace(/^\//, ''); // Remove leading slash
-  config.protocol = 'postgres';
-  config.dialect = 'postgres';
-}
-
-// Handle DB_URL if provided (alternative to DATABASE_URL)
-if (process.env.DB_URL) {
-  console.log('🔗 Using PostgreSQL (DB_URL)');
-  config.dialect = 'postgres';
-  config.protocol = 'postgres';
-}
-
-// Create logs directory if it doesn't exist
-const logDir = path.join(__dirname, '../../logs');
-if (!fs.existsSync(logDir)) {
-  fs.mkdirSync(logDir, { recursive: true });
-}
-
-// Log the database being used
-if (env === 'production') {
-  console.log('🚀 Production database configuration:');
-  console.log(`- Host: ${config.host}`);
-  console.log(`- Database: ${config.database}`);
-  console.log(`- Port: ${config.port}`);
-} else {
-  console.log('💾 Using SQLite for development');
-  console.log(`📂 Database path: ${config.storage}`);
-}
-
-// Initialize Sequelize
-let sequelize;
-try {
-  sequelize = new Sequelize(config);
-  console.log('✅ Database connection configured successfully');
-} catch (error) {
-  console.error('❌ Failed to initialize database:', error);
-  process.exit(1);
-}
-
-// Test database connection
-async function testConnection() {
-  try {
-    await sequelize.authenticate();
-    console.log('✅ Database connection has been established successfully.');
-    return true;
-  } catch (error) {
-    console.error('❌ Unable to connect to the database:', error);
-    return false;
-  }
-}
-
-// Export the configuration and Sequelize instance
-module.exports = {
-  // For backward compatibility
-  [env]: { database: config },
-  database: config,
-  sequelize,
-  testConnection,
-  Sequelize // Export Sequelize for model definitions
-};
-          ssl: {
-            require: true,
-            rejectUnauthorized: false
-          }
-        } : {}),
-        ...(dbConfig.dialectOptions || {})
-      },
-      pool: {
-        max: 5,
-        min: 0,
-        acquire: process.env.NODE_ENV === 'production' ? 60000 : 30000,
-        idle: 10000,
-        ...(dbConfig.pool || {})
-      }
-    });
-  } else {
-    // Configuration pour SQLite (développement/local)
-    console.log('💾 Using SQLite');
-    
-    // Déterminer le chemin de la base de données
-    const dbPath = process.env.NODE_ENV === 'production'
-      ? '/tmp/database.sqlite'  // Répertoire temporaire sur Render
-      : path.join(__dirname, '..', 'database.sqlite');
-    
-    console.log(`📂 Database path: ${dbPath}`);
-    
-    // Créer le répertoire parent si nécessaire
-    const dbDir = path.dirname(dbPath);
-    if (!fs.existsSync(dbDir)) {
-      fs.mkdirSync(dbDir, { recursive: true });
-    }
-    
-    sequelize = new Sequelize({
-      dialect: 'sqlite',
-      storage: dbPath,
-      logging,
-      ...dbConfig
-    });
-  }
-} catch (error) {
-  console.error('❌ Failed to connect to the database:', error);
-  process.exit(1);
-}
-
-// Tester la connexion à la base de données
-async function testConnection() {
-  try {
-    await sequelize.authenticate();
-    console.log('✅ Database connection has been established successfully.');
-    return true;
-  } catch (error) {
-    console.error('❌ Unable to connect to the database:', error);
-    return false;
-  }
-}
-
-// Exporter l'instance Sequelize et la fonction de test
-module.exports = {
-  sequelize,
-  testConnection,
-  config: dbConfig
+  // Configuration pour référence
+  getConfig: () => ({
+    dialect: sequelize.options.dialect,
+    database: sequelize.config.database,
+    host: sequelize.config.host,
+    port: sequelize.config.port,
+    username: sequelize.config.username
+  })
 };
